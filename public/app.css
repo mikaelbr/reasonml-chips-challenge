@@ -32,6 +32,7 @@ h1 {
   display: block;
 }
 
+/* 64px per tile */
 .tile {
   background: url('images/tiles.png') no-repeat -2px -2px;
   background-size: 530px 1048px;
@@ -45,4 +46,13 @@ h1 {
 }
 .tile--wall {
   background-position: -134px -68px;
+}
+.tile--keyRed {
+  background-position: -2px -332px;
+}
+.tile--doorRed {
+  background-position: -2px -266px;
+}
+.tile--chip {
+  background-position: -200px -68px;
 }

@@ -1,0 +1,13 @@
+# dependencies
+node_modules
+
+# build
+src/**/*.js
+public/main.js
+lib
+
+# logs
+*.log
+
+# mac
+.DS_Store

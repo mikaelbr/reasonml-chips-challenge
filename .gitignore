@@ -5,6 +5,7 @@ node_modules
 src/**/*.js
 public/main.js
 lib
+.merlin
 
 # logs
 *.log

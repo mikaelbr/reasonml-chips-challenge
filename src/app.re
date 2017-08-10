@@ -37,7 +37,19 @@ type state = {
   keys: list color
 };
 
+let string_of_opt_tile =
+  fun
+  | Some x => string_of_tile x
+  | None => "Nothing";
+
+let printKeyList prefix keys =>
+  Js.log (
+    prefix ^ " :: " ^ (keys |> List.map string_of_color |> String.concat ", ")
+  );
+
 let isEqualPos (x, y) (x_, y_) => x == x_ && y == y_;
+
+let fold_lefti fn init arr => arr |> Array.of_list |> Js.Array.reducei fn init;
 
 let getTile (x, y) (board: board) =>
   try {
@@ -48,63 +60,51 @@ let getTile (x, y) (board: board) =>
   | Invalid_argument _ => None
   };
 
+let hasKeyOfColor c keys => List.exists ((==) c) keys;
+
+let rec removeOneFromKeys c =>
+  fun
+  | [h, ...t] when h == c => t
+  | [h, ...t] => [h, ...removeOneFromKeys c t]
+  | [] => [];
+
+let isNextPositionLegal keys =>
+  fun
+  | Some (Door c) when hasKeyOfColor c keys => true
+  | Some Floor
+  | Some (Key _) => true
+  | _ => false;
+
+let getNextTile inCurrentPos prevKeys =>
+  fun
+  | Person => (Floor, prevKeys)
+  | a when inCurrentPos =>
+    switch a {
+    | Floor => (Person, prevKeys)
+    | Key c => (Person, prevKeys @ [c])
+    | Door c => (Person, removeOneFromKeys c prevKeys)
+    | tile => (tile, prevKeys)
+    }
+  | tile => (tile, prevKeys);
+
 let setPosition pos {board, keys} :state => {
   let nextTile = getTile pos board;
-  let (board, newKeys) =
-    board |> Array.of_list |>
-    Js.Array.reducei
-      (
-        fun (acc, keys_) row y_ => {
-          let (newRow, newKeys) =
-            row |> Array.of_list |>
-            Js.Array.reducei
-              (
-                fun (newRow, prevKeys) tile x_ => {
-                  let isNextPositionLegal =
-                    switch nextTile {
-                    | Some (Door c) when List.exists (fun a => a == c) keys =>
-                      true
-                    | Some Floor
-                    | Some (Key _) => true
-                    | _ => false
-                    };
-                  let (newTile, key) =
-                    switch tile {
-                    | Person when isNextPositionLegal => (Floor, prevKeys)
-                    | Floor when isEqualPos pos (x_, y_) => (Person, prevKeys)
-                    | Key c when isEqualPos pos (x_, y_) => (
-                        Person,
-                        prevKeys @ [Some (Key c)]
-                      )
-                    | Door c
-                        when isNextPositionLegal && isEqualPos pos (x_, y_) => (
-                        Person,
-                        prevKeys
-                      )
-                    | _ => (tile, prevKeys)
-                    };
-                  (newRow @ [newTile], key)
-                }
-              )
-              ([], []);
-          (acc @ [newRow], keys_ @ newKeys)
-        }
-      )
-      ([], []);
-  let newKeys =
-    newKeys |>
-    List.filter (
-      fun
-      | None => false
-      | Some (Key _) => true
-      | _ => false
-    ) |>
-    List.map (
-      fun
-      | Some (Key c) => c
-      | _ => failwith "Unreachable code"
-    );
-  {board, keys: keys @ newKeys}
+  let isNextLegal = isNextPositionLegal keys nextTile;
+  let reduceRow y (newRow, prevKeys) tile x => {
+    let inCurrentPos = isEqualPos pos (x, y);
+    let (newTile, key) = getNextTile inCurrentPos prevKeys tile;
+    (newRow @ [newTile], key)
+  };
+  let reduceColumns (acc, prevKeys) row y => {
+    let (newRow, newKeys) = fold_lefti (reduceRow y) ([], prevKeys) row;
+    (acc @ [newRow], newKeys)
+  };
+  if (not isNextLegal) {
+    {board, keys}
+  } else {
+    let (board, keys) = fold_lefti reduceColumns ([], keys) board;
+    {board, keys}
+  }
 };
 
 let getCurrentPosition board => {
@@ -116,9 +116,7 @@ let getCurrentPosition board => {
       | _ => false
     );
   let dimension = List.length board;
-  let y = index / dimension;
-  let x = index mod dimension;
-  (x, y)
+  (index mod dimension, index / dimension)
 };
 
 let string_of_pos (x, y) => Printf.sprintf "(%d, %d)" x y;
@@ -167,22 +165,21 @@ let doMove event {ReasonReact.state: state} =>
   | Some direction =>
     ReactEventRe.Keyboard.preventDefault event;
     let state = move direction state;
-    let foo = state.keys |> List.map string_of_color |> String.concat ", ";
-    Js.log foo;
+    printKeyList "Current key inventory" state.keys;
     ReasonReact.Update state
   | _ => ReasonReact.NoUpdate
   };
 
 let board = [
-  [Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Floor, Floor, Floor, Floor, Floor, Key Red, Floor, Floor],
-  [Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Floor, Floor, Key Red, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Door Red, Floor, Floor, Floor, Floor, Floor, Floor, Floor],
-  [Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor, Floor]
+  [Floor, Floor, Floor, Floor, Floor, Floor, Door Red, Floor, Floor],
+  [Walls, Walls, Walls, Floor, Walls, Walls, Walls, Walls, Floor],
+  [Key Red, Floor, Floor, Floor, Walls, Floor, Key Red, Floor, Floor],
+  [Walls, Walls, Walls, Walls, Walls, Floor, Floor, Floor, Floor],
+  [Floor, Floor, Floor, Walls, Floor, Floor, Walls, Walls, Walls],
+  [Floor, Floor, Floor, Walls, Floor, Walls, Walls, Floor, Floor],
+  [Floor, Floor, Floor, Walls, Floor, Walls, Floor, Floor, Floor],
+  [Key Red, Walls, Floor, Floor, Floor, Door Red, Door Red, Floor, Floor],
+  [Floor, Floor, Floor, Floor, Floor, Walls, Floor, Floor, Floor]
 ];
 
 let state = {board, keys: []};
